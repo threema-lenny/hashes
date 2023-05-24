@@ -304,11 +304,16 @@ macro_rules! blake2_mac_impl {
                 if kl == 0 || kl > bs || salt.len() > qbs || persona.len() > qbs {
                     return Err(InvalidLength);
                 }
-                let mut padded_key = Block::<$hash>::default();
-                padded_key[..kl].copy_from_slice(key);
+                let buffer = if kl > 0 {
+                    let mut padded_key = Block::<$hash>::default();
+                    padded_key[..kl].copy_from_slice(key);
+                    LazyBuffer::new(&padded_key)
+                } else {
+                    LazyBuffer::default()
+                };
                 Ok(Self {
                     core: <$hash>::new_with_params(salt, persona, key.len(), OutSize::USIZE),
-                    buffer: LazyBuffer::new(&padded_key),
+                    buffer,
                     #[cfg(feature = "reset")]
                     key_block: {
                         let mut t = Key::<Self>::default();
