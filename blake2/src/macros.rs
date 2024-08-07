@@ -286,29 +286,36 @@ macro_rules! blake2_mac_impl {
         {
             /// Create new instance using provided key, salt, and persona.
             ///
+            /// Setting key to `None` indicates keyless usage.
+            ///
             /// # Errors
             ///
-            /// Key length should not be empty or bigger than the block size and
-            /// the salt and persona length should not be bigger than quarter of
-            /// block size. If any of those conditions is false the method will
-            /// return an error.
+            /// If key is `Some`, then its length should not be zero or bigger
+            /// than the block size. The salt and persona length should not be
+            /// bigger than quarter of block size. If any of those conditions is
+            /// false the method will return an error.
             #[inline]
             pub fn new_with_salt_and_personal(
-                key: &[u8],
+                key: Option<&[u8]>,
                 salt: &[u8],
                 persona: &[u8],
             ) -> Result<Self, InvalidLength> {
-                let kl = key.len();
+                let kl = key.map_or(0, |k| k.len());
                 let bs = <$hash as BlockSizeUser>::BlockSize::USIZE;
                 let qbs = bs / 4;
-                if kl == 0 || kl > bs || salt.len() > qbs || persona.len() > qbs {
+                if key.is_some() && kl == 0 || kl > bs || salt.len() > qbs || persona.len() > qbs {
                     return Err(InvalidLength);
                 }
-                let mut padded_key = Block::<$hash>::default();
-                padded_key[..kl].copy_from_slice(key);
+                let buffer = if let Some(k) = key {
+                    let mut padded_key = Block::<$hash>::default();
+                    padded_key[..kl].copy_from_slice(k);
+                    LazyBuffer::new(&padded_key)
+                } else {
+                    LazyBuffer::default()
+                };
                 Ok(Self {
-                    core: <$hash>::new_with_params(salt, persona, key.len(), OutSize::USIZE),
-                    buffer: LazyBuffer::new(&padded_key),
+                    core: <$hash>::new_with_params(salt, persona, kl, OutSize::USIZE),
+                    buffer,
                     #[cfg(feature = "reset")]
                     key_block: {
                         let mut t = Key::<Self>::default();
